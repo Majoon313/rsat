@@ -59,6 +59,59 @@ setMethod(
 #' @rdname rsat_download
 #' @aliases rsat_download,records
 #' @importFrom parallel mclapply
+
+# Code Änderung hier
+
+rsat_download2<-function(x, db_path, verbose = FALSE, parallel=FALSE, ...) {
+  require(rsat)
+  
+  args <- list(...)
+  
+  if (missing(db_path)){
+    db_path <- get_database(x)
+    if(db_path==""){
+      stop("db_path or global environment database needed for image downloading.")
+    }
+  }
+  
+  # filter records
+  x<-records(x)
+  dataspace <- x[get_api_name(x)%in%"dataspace"]
+  usgs <- x[get_api_name(x)%in%"usgs"]
+  lpdaac <- x[get_api_name(x)%in%"lpdaac"]
+  
+  # run download
+  if(parallel){
+    functions_list <- list(
+      list(func = connection$getApi("lpdaac")$download_lpdaac_records,
+           args = list(lpdaac_records=lpdaac,db_path=db_path,verbose=verbose,...)),
+      list(func = rsat:::connection$getApi("dataspace")$dataspace_download_records,
+           args = list(records=dataspace,db_path=db_path,verbose=verbose,...)),
+      list(func = connection$getApi("usgs")$espa_order_and_download,
+           args = list(usgs=usgs,db_path=db_path,verbose=verbose,...))
+    )
+    null.list <-mclapply(functions_list, function(entry) {
+      do.call(entry$func, entry$args)
+    }, mc.cores = 3)
+  }else{
+    functions_list <- list(
+      list(func = rsat:::connection$getApi("usgs")$order_usgs_records,
+           args = list(espa_orders=usgs,db_path=db_path,verbose=verbose,...)),
+      list(func = rsat:::connection$getApi("lpdaac")$download_lpdaac_records,
+           args = list(lpdaac_records=lpdaac,db_path=db_path,verbose=verbose,...)),
+      list(func = rsat:::connection$getApi("dataspace")$dataspace_download_records,
+           args = list(records=dataspace,db_path=db_path,verbose=verbose,...)),
+      list(func = rsat:::connection$getApi("usgs")$download_espa_orders,
+           args = list(espa.orders=usgs,db_path=db_path,verbose=verbose,...))
+    )
+    null.list <- lapply(functions_list, function(entry) {
+      do.call(entry$func, entry$args)
+    })
+  }
+}
+
+# bis hier
+
 setMethod(
   f = "rsat_download",
   signature = c("records"),
